@@ -23,7 +23,10 @@ opencv-python==4.13.0.92
 numpy==2.4.6
 
 # ── Deep learning (CNN + MNIST loading) ──────────────────────
-tensorflow==2.21.0
+tensorflow-cpu
+
+# ── HDF5 weight loading (MobileNetV2 rebuild) ────────────────
+h5py
 
 # ── Symbolic mathematics (equation solving) ──────────────────
 sympy==1.14.0
