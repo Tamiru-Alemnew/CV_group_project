@@ -1,0 +1,67 @@
+# ============================================================
+# AI Handwritten Math Equation Solver — Full System
+# ============================================================
+#
+# Setup (run once):
+#   python3 -m venv .venv
+#   source .venv/bin/activate          # Linux / macOS
+#   .venv\Scripts\activate             # Windows
+#   pip install -r requirements.txt
+#
+# Run commands:
+#   streamlit run app/app.py           # Web app
+#   python main.py --mode image --image sample.jpg
+#   python main.py --mode test
+#   python main.py --train
+#   python demo/evaluation.py
+# ============================================================
+
+# ── Core computer vision ─────────────────────────────────────
+opencv-python==4.13.0.92
+
+# ── Numerical computing ──────────────────────────────────────
+numpy==2.4.6
+
+# ── Deep learning (CNN + MNIST loading) ──────────────────────
+tensorflow==2.21.0
+
+# ── Symbolic mathematics (equation solving) ──────────────────
+sympy==1.14.0
+
+# ── Web application ──────────────────────────────────────────
+streamlit==1.57.0
+streamlit-drawable-canvas==0.9.3
+
+# ── Interactive charts (History tab) ─────────────────────────
+plotly==6.7.0
+
+# ── Visualisation ────────────────────────────────────────────
+matplotlib==3.10.9
+seaborn==0.13.2
+
+# ── Data handling ────────────────────────────────────────────
+pandas==3.0.3
+
+# ── Machine learning utilities ───────────────────────────────
+scikit-learn==1.8.0
+
+# ── Progress bars ────────────────────────────────────────────
+tqdm==4.67.3
+
+# ── Image I/O ────────────────────────────────────────────────
+pillow==12.2.0
+
+# ── Scientific computing ─────────────────────────────────────
+scipy==1.17.1
+
+# ── Transitive / pinned for reproducibility ─────────────────
+contourpy==1.3.3
+cycler==0.12.1
+fonttools==4.63.0
+joblib==1.5.3
+kiwisolver==1.5.0
+packaging==26.2
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+six==1.17.0
+threadpoolctl==3.6.0
