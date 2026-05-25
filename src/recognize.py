@@ -59,7 +59,13 @@ class SymbolRecognizer:
                 "Train the model first with:  python main.py --train"
             )
         print(f"[Recognizer] Loading model from {self.model_path} …", end=' ')
-        self.model = tf.keras.models.load_model(self.model_path)
+        try:
+            self.model = tf.keras.models.load_model(self.model_path, safe_mode=False)
+        except Exception:
+            # MobileNetV2 uses a Lambda layer whose output shape Keras 3.x cannot
+            # infer during deserialization.  Rebuild the architecture fresh and
+            # load only the weights so Lambda is constructed in the live session.
+            self.model = self._rebuild_mobilenet(self.model_path)
         print("done.")
 
         # Warmup: first TF call triggers JIT compilation — do it now, not
@@ -68,6 +74,80 @@ class SymbolRecognizer:
         dummy = np.zeros((1, h, w, 1), dtype=np.float32)
         _ = self.model.predict(dummy, verbose=0)
         print("[Recognizer] Warmup complete. Ready for inference.")
+
+    def _rebuild_mobilenet(self, model_path: str) -> 'tf.keras.Model':
+        """
+        Load MobileNetV2 from a Keras 2.x h5 file saved on Colab.
+
+        load_model fails because Keras 3.x can't infer the Lambda output shape.
+        load_weights(by_name=True) silently skips the nested MobileNetV2 backbone
+        weights (Keras 2.x stores them several group levels deep; Keras 3.x only
+        looks one level deep), leaving all Conv/BN layers at random init → NaN.
+
+        Fix: read the model config from the h5, patch the Lambda output_shape so
+        model_from_json succeeds, then walk the nested h5 weight groups recursively
+        and set each layer's weights directly with set_weights().
+        """
+        import h5py, json
+
+        # ── 1. Read and patch model config ───────────────────────────────────
+        with h5py.File(model_path, 'r') as f:
+            cfg_raw = f.attrs.get('model_config', None)
+        if cfg_raw is None:
+            raise ValueError("No model_config in h5 file.")
+        cfg_str = cfg_raw.decode('utf-8') if isinstance(cfg_raw, bytes) else str(cfg_raw)
+        cfg = json.loads(cfg_str)
+
+        def _patch_lambda(node):
+            if isinstance(node, dict):
+                if node.get('class_name') == 'Lambda':
+                    node.get('config', {}).setdefault('output_shape', [None, 32, 32, 3])
+                for v in node.values():
+                    _patch_lambda(v)
+            elif isinstance(node, list):
+                for v in node:
+                    _patch_lambda(v)
+
+        _patch_lambda(cfg)
+        tf.keras.config.enable_unsafe_deserialization()
+        model = tf.keras.models.model_from_json(json.dumps(cfg))
+
+        # ── 2. Recursive h5 weight loader (handles Keras 2.x nested groups) ──
+        def _find_layer(m, name):
+            for lyr in m.layers:
+                if lyr.name == name:
+                    return lyr
+                if hasattr(lyr, 'layers'):
+                    found = _find_layer(lyr, name)
+                    if found is not None:
+                        return found
+            return None
+
+        def _load_group(group):
+            layer_names = [n.decode() if isinstance(n, bytes) else n
+                           for n in group.attrs.get('layer_names', [])]
+            for name in layer_names:
+                if name not in group:
+                    continue
+                sub = group[name]
+                w_names = [n.decode() if isinstance(n, bytes) else n
+                           for n in sub.attrs.get('weight_names', [])]
+                if w_names:
+                    lyr = _find_layer(model, name)
+                    if lyr is not None and lyr.weights:
+                        try:
+                            lyr.set_weights([np.array(sub[wn]) for wn in w_names
+                                             if wn in sub])
+                        except Exception:
+                            pass
+                else:
+                    _load_group(sub)
+
+        with h5py.File(model_path, 'r') as f:
+            if 'model_weights' in f:
+                _load_group(f['model_weights'])
+
+        return model
 
     # ─────────────────────────────────────────────────────────────────────────
 
