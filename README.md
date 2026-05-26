@@ -51,22 +51,26 @@ Input Image / Canvas Drawing
 
 ## Models
 
-| Model | Val Accuracy | Classes | Input |
-|-------|-------------|---------|-------|
-| **CNN v3** | **98.95%** | 18 | 32×32 grayscale |
-| MobileNetV2 | ~93% | 18 | 32×32 → RGB |
+| Model | Val Accuracy | Test Accuracy | Classes | Input |
+|-------|-------------|--------------|---------|-------|
+| **CNN v3** | **98.82%** | **98.83%** | 18 | 32×32 grayscale |
+| MobileNetV2 | 95.46% | 95.59% | 18 | 32×32 → RGB |
 
 18 symbol classes: digits `0–9`, operators `+ − × ÷ = x ( )`
 
+Training: 30 epochs, batch size 128, class-weighted loss, ReduceLROnPlateau.
+
 ### Training Data
+
+Total dataset: **314,445 samples** — train 220,111 / val 47,167 / test 47,167
 
 | Source | Samples |
 |--------|---------|
-| EMNIST Digits — handwritten digits 0–9 | 280 000 |
-| EMNIST Letters — handwritten x/X | ~5 600 |
-| HASYv2 — handwritten operators +−×÷= | ~8 000 |
-| Kaggle Math Symbols — digits and operators | ~2 400 |
-| Synthetic (PIL + augmentation) — parentheses | 5 000 |
+| EMNIST Digits — handwritten digits 0–9 | 280,000 |
+| EMNIST Letters — handwritten x/X | 3,437 |
+| HASYv2 — handwritten operators + − × ÷ / | 2,172 |
+| Kaggle Math Symbols — digits and operators | 8,836 |
+| Synthetic (PIL + augmentation) — operators and parentheses | 20,000 |
 
 ---
 
