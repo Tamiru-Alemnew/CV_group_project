@@ -1,11 +1,6 @@
 """
-Stage 5 - Web Application (Streamlit)
-
-Four-tab interface:
-  Tab 1 — Solve Equation       (primary user-facing solver)
-  Tab 2 — Processing Details   (CV demonstration — most important for assessment)
-  Tab 3 — History & Statistics (solved equation history with interactive charts)
-  Tab 4 — Model Information    (training artefacts and CNN performance metrics)
+Streamlit web app — four tabs:
+  Solve Equation / Processing Details / History / Model Information
 """
 
 import sys, os
@@ -74,11 +69,15 @@ with st.sidebar:
     st.markdown('### About')
     st.markdown(
         'AI Handwritten Math Equation Solver  \n'
-        'Computer Vision University Project  \n'
-        '**Stage 5 — Web Interface**'
+        'Computer Vision University Project'
     )
     st.markdown('**Team Members**')
-    st.markdown('- [Your Name]  \n- [Team Member 2]  \n- [Team Member 3]')
+    st.markdown(
+        '- Abenezer Seifu\n'
+        '- Kaleb Asratemedhin\n'
+        '- Mati Milkessa\n'
+        '- Tamiru Alemnew'
+    )
 
 # ── Load pipeline(s) ──────────────────────────────────────────────────────────
 _cnn_path = str(config.CNN_MODEL_PATH if config.CNN_MODEL_PATH.exists() else config.MODEL_PATH)
