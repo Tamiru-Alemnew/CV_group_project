@@ -624,3 +624,17 @@ with tab4:
                 st.write({r['Class']: r['Samples'] for r in rows})
     if not _any_split:
         st.info('No processed dataset found. Run training to generate split statistics.')
+
+    st.divider()
+
+    # ── 8. Team ───────────────────────────────────────────────────────────────
+    st.subheader('8️⃣  Team')
+    st.markdown('Computer Vision course project — Addis Ababa University')
+    team = [
+        ('Abenezer Seifu',      'UGR/6499/14'),
+        ('Kaleb Asratemedhin',  'UGR/9104/14'),
+        ('Mati Milkessa',       'UGR/0949/14'),
+        ('Tamiru Alemnew',      'UGR/5857/14'),
+    ]
+    for name, id_ in team:
+        st.markdown(f'- **{name}** &nbsp; `{id_}`')
