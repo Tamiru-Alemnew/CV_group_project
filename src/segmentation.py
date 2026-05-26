@@ -1,10 +1,3 @@
-"""
-Stage 1 - Module 2: Character Segmenter
-
-Takes a clean preprocessed binary image (white ink on black background)
-and splits it into individual 32×32 character crops with full metadata.
-"""
-
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,51 +9,24 @@ import config
 
 
 class Segmenter:
-    """
-    Detects, extracts, and classifies every symbol in a preprocessed binary
-    equation image.
-
-    Pipeline:
-        find_contours → filter → bounding_boxes → sort_L2R →
-        position_type → crop_and_resize
-    """
 
     _POSITION_COLORS = {
-        'normal':      (0, 200, 0),   # Green
-        'superscript': (0, 0, 220),   # Red   (raised → exponent)
-        'subscript':   (220, 0, 0),   # Blue  (lowered)
+        'normal':      (0, 200, 0),
+        'superscript': (0, 0, 220),
+        'subscript':   (220, 0, 0),
     }
 
     def __init__(self,
                  min_contour_area: int = 30,
                  padding: int = 5,
                  target_size: tuple = None):
-        """
-        Args:
-            min_contour_area: Minimum pixel area to be treated as a real character.
-            padding:          Extra pixels added around each character crop.
-            target_size:      Output (w, h); defaults to config.IMAGE_SIZE.
-        """
         self.min_contour_area = min_contour_area
         self.padding          = padding
         self.target_size      = target_size or config.IMAGE_SIZE
 
-    # ─────────────────────────────────────────────────────────────────────────
-
     def find_contours(self, binary_image: np.ndarray) -> list:
-        """
-        Trace boundaries of all connected white regions.
-
-        Why RETR_EXTERNAL: retrieves only outermost contours, ignoring inner
-        holes (e.g., inside '0'). This ensures each symbol produces exactly
-        one contour rather than an outer ring plus an inner hole.
-
-        Why CHAIN_APPROX_SIMPLE: compresses straight-line runs to two endpoints,
-        saving memory without losing bounding-box accuracy.
-        """
         if binary_image.dtype != np.uint8:
             binary_image = (binary_image * 255).astype(np.uint8)
-
         contours, _ = cv2.findContours(
             binary_image,
             cv2.RETR_EXTERNAL,
@@ -69,52 +35,22 @@ class Segmenter:
         return contours
 
     def filter_contours(self, contours: list) -> list:
-        """
-        Discard contours smaller than min_contour_area.
-
-        Why: Real characters occupy substantially more pixels than noise specks.
-        Any region below the threshold is almost certainly not a symbol.
-        """
         return [c for c in contours if cv2.contourArea(c) >= self.min_contour_area]
 
     def get_bounding_boxes(self, contours: list) -> list:
-        """
-        Extract axis-aligned bounding rectangles from contours.
-
-        Returns list of (x, y, w, h) tuples defining crop regions.
-        """
         return [cv2.boundingRect(c) for c in contours]
 
     def sort_left_to_right(self, boxes: list) -> list:
-        """
-        Sort bounding boxes in reading order (left edge ascending).
-
-        Why: findContours returns contours in raster-scan order, not reading
-        order. Sorting by x-coordinate gives correct left-to-right sequence
-        required for equation parsing.
-        """
         return sorted(boxes, key=lambda b: b[0])
 
     def merge_compound_boxes(self, boxes: list) -> list:
-        """
-        Merge pairs of bounding boxes that form a single symbol split across
-        two contours — the primary case being the '=' sign, whose two horizontal
-        bars are detected as separate contours by findContours.
-
-        Merge criteria (both must hold):
-          1. Horizontal overlap ≥ 50 % of the narrower box's width.
-          2. Vertical gap between the boxes < avg character height × 0.4.
-          3. At least one of the two boxes is 'thin' (height < 0.35 × its width).
-
-        The merged box is the axis-aligned union of the two source boxes.
-        """
+        """Merge two-bar symbols (e.g. '=') whose contours are detected separately."""
         if len(boxes) < 2:
             return boxes
 
         avg_h = float(np.mean([h for (_, _, _, h) in boxes])) if boxes else 1.0
-
-        merged   = []
-        used     = [False] * len(boxes)
+        merged = []
+        used   = [False] * len(boxes)
 
         for i in range(len(boxes)):
             if used[i]:
@@ -128,18 +64,15 @@ class Segmenter:
                     continue
                 xj, yj, wj, hj = boxes[j]
 
-                # 1. Horizontal overlap
                 overlap_x = min(xi + wi, xj + wj) - max(xi, xj)
                 min_w     = min(wi, wj)
                 if min_w == 0 or overlap_x / min_w < 0.50:
                     continue
 
-                # 2. Vertical gap
                 gap_y = max(yi, yj) - min(yi + hi, yj + hj)
                 if gap_y > avg_h * 0.40:
                     continue
 
-                # 3. At least one thin box
                 thin_i = hi < wi * 0.35
                 thin_j = hj < wj * 0.35
                 if not (thin_i or thin_j):
@@ -164,21 +97,7 @@ class Segmenter:
         return merged
 
     def detect_position_type(self, boxes: list) -> list:
-        """
-        Classify each character as 'normal', 'superscript', or 'subscript'.
-
-        Why: Exponents (x²) are written raised above the baseline. Detecting
-        vertical position is essential for correct equation parsing.
-
-        A character is a superscript only when BOTH conditions hold:
-          1. Its y-center is more than 60% of avg-height ABOVE the mean   (position)
-          2. Its height is less than 65% of the average character height   (size)
-
-        Requiring both conditions avoids false positives: in real handwriting
-        a normal digit may sit slightly high, but it is never also much smaller
-        than the surrounding characters. True exponents (x²) satisfy both —
-        they are written raised AND are visibly smaller.
-        """
+        """Classify each character as normal, superscript, or subscript by vertical position and size."""
         if not boxes:
             return []
 
@@ -186,8 +105,8 @@ class Segmenter:
         heights    = [h             for (x, y, w, h) in boxes]
         avg_cy     = float(np.mean(centers_y))
         avg_h      = float(np.mean(heights))
-        pos_thresh = avg_h * 0.60   # must be this far above mean
-        size_thresh = avg_h * 0.65  # must also be this much smaller than avg
+        pos_thresh  = avg_h * 0.60
+        size_thresh = avg_h * 0.65
 
         types = []
         for (cy, h) in zip(centers_y, heights):
@@ -200,16 +119,6 @@ class Segmenter:
         return types
 
     def crop_and_resize(self, image: np.ndarray, box: tuple) -> np.ndarray:
-        """
-        Crop a character region with padding and resize to target_size.
-
-        Why padding: Without padding a stroke may touch the crop boundary,
-        differing from MNIST images which always have whitespace around them.
-        5 pixels of padding recreates that natural margin.
-
-        Why INTER_AREA: pixel-area resampling minimises aliasing when
-        downscaling by averaging nearby pixels, preserving stroke detail.
-        """
         x, y, w, h = box
         ih, iw = image.shape[:2]
 
@@ -222,9 +131,7 @@ class Segmenter:
         if crop.size == 0:
             crop = np.zeros((1, 1), dtype=np.uint8)
 
-        # Preserve aspect ratio so narrow characters (e.g. '1', '/', '-') keep
-        # their natural proportions.  EMNIST normalises digits the same way:
-        # the digit is scaled to fit inside the frame, then centred on black.
+        # Preserve aspect ratio, centred on black canvas (matches EMNIST normalisation)
         tw, th = self.target_size
         ch_h, ch_w = crop.shape[:2]
         scale  = min(tw / ch_w, th / ch_h)
@@ -238,25 +145,7 @@ class Segmenter:
         canvas[off_y:off_y + new_h, off_x:off_x + new_w] = resized
         return canvas
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Full pipeline
-    # ─────────────────────────────────────────────────────────────────────────
-
     def segment(self, binary_image: np.ndarray) -> list[dict]:
-        """
-        Run the complete segmentation pipeline.
-
-        Args:
-            binary_image: uint8 or float32 binary image, white ink on black.
-
-        Returns:
-            List of character dicts (sorted left-to-right), each containing:
-              'image'         – 32×32 uint8 crop
-              'bbox'          – dict {x, y, width, height}
-              'index'         – 0-based sequence position
-              'position_type' – 'normal' | 'superscript' | 'subscript'
-              'center'        – dict {x_center, y_center}
-        """
         if binary_image.dtype != np.uint8:
             binary_image = (binary_image * 255).astype(np.uint8)
 
@@ -284,30 +173,10 @@ class Segmenter:
             })
         return characters
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Visualisation
-    # ─────────────────────────────────────────────────────────────────────────
-
     def visualize_segmentation(self,
                                 source_image: np.ndarray,
                                 characters: list,
                                 save_path: str = None) -> np.ndarray:
-        """
-        Draw green bounding boxes with index labels on the source image.
-
-        Box colours:
-            Green  → normal
-            Red    → superscript
-            Blue   → subscript
-
-        Args:
-            source_image: Grayscale or BGR image to annotate (not modified in place).
-            characters:   Character dicts from segment().
-            save_path:    Optional save path.
-
-        Returns:
-            BGR annotated image.
-        """
         if len(source_image.shape) == 2:
             annotated = cv2.cvtColor(source_image, cv2.COLOR_GRAY2BGR)
         else:
@@ -341,17 +210,6 @@ class Segmenter:
                         characters: list,
                         save_path: str = None,
                         max_per_row: int = 10) -> plt.Figure | None:
-        """
-        Show all segmented character crops in a grid.
-
-        Args:
-            characters:  Character dicts from segment().
-            save_path:   Optional save path.
-            max_per_row: Maximum columns per row.
-
-        Returns:
-            matplotlib Figure or None if no characters.
-        """
         if not characters:
             return None
 
@@ -361,10 +219,9 @@ class Segmenter:
 
         fig, axes = plt.subplots(n_rows, n_cols,
                                   figsize=(n_cols * 1.6, n_rows * 2.0))
-        fig.suptitle(f'Segmented Character Crops  ({n} found)  32×32 px each',
+        fig.suptitle(f'Segmented Character Crops  ({n} found)',
                      fontsize=11, fontweight='bold')
 
-        # Normalise axes to 2-D list
         if n_rows == 1 and n_cols == 1:
             axes_grid = [[axes]]
         elif n_rows == 1:
